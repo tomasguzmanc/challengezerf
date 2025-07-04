@@ -1,0 +1,197 @@
+// Clase base para nodos (archivos y directorios)
+class Node {
+    constructor(name, parent) {
+        // Permite el nombre vacío SOLO para la raíz
+        if (name === undefined || name === null || (name !== '' && name.includes('/'))) {
+            throw new Error('Invalid name');
+        }
+        this.name = name;
+        this.parent = parent;
+    }
+}
+
+// Clase para archivos
+class File extends Node {
+    constructor(name, parent) {
+        super(name, parent);
+    }
+}
+
+// Clase para directorios
+class Directory extends Node {
+    constructor(name, parent) {
+        super(name, parent);
+        this.children = new Map();
+    }
+
+    addChild(node) {
+        if (this.children.has(node.name)) {
+            throw new Error(`Node ${node.name} already exists`);
+        }
+        this.children.set(node.name, node);
+    }
+
+    getChild(name) {
+        return this.children.get(name);
+    }
+
+    removeChild(name) {
+        if (!this.children.has(name)) {
+            throw new Error(`Node ${name} does not exist`);
+        }
+        this.children.delete(name);
+    }
+
+    listChildren() {
+        return Array.from(this.children.keys());
+    }
+}
+
+// Clase para el sistema de archivos
+class FileSystem {
+    constructor() {
+        this.root = new Directory('', null); // Raíz con nombre vacío
+        this.currentDir = this.root;
+    }
+
+    resolvePath(path) {
+        let parts = path.split('/').filter(p => p && p !== '.');
+        let current = path.startsWith('/') ? this.root : this.currentDir;
+
+        for (let part of parts) {
+            if (part === '..') {
+                if (current.parent) current = current.parent;
+                continue;
+            }
+            if (!(current instanceof Directory)) {
+                throw new Error('Path leads to a file, not a directory');
+            }
+            let next = current.getChild(part);
+            if (!next) throw new Error(`Path ${part} not found`);
+            current = next;
+        }
+        return current;
+    }
+
+    cd(dirName) {
+        const target = this.resolvePath(dirName);
+        if (!(target instanceof Directory)) {
+            throw new Error(`${dirName} is not a directory`);
+        }
+        this.currentDir = target;
+    }
+
+    touch(fileName) {
+        const parts = fileName.split('/');
+        const file = parts.pop();
+        const dir = parts.length > 0 || fileName.startsWith('/')
+            ? this.resolvePath(parts.join('/') || '/')
+            : this.currentDir;
+
+        if (!(dir instanceof Directory)) {
+            throw new Error('Target path is not a directory');
+        }
+        dir.addChild(new File(file, dir));
+    }
+
+    mkdir(dirName) {
+        const parts = dirName.split('/');
+        const dir = parts.pop();
+        const parent = parts.length > 0 || dirName.startsWith('/')
+            ? this.resolvePath(parts.join('/') || '/')
+            : this.currentDir;
+
+        if (!(parent instanceof Directory)) {
+            throw new Error('Target path is not a directory');
+        }
+        parent.addChild(new Directory(dir, parent));
+    }
+
+    ls() {
+        return this.currentDir.listChildren();
+    }
+
+    pwd() {
+        let path = [];
+        let current = this.currentDir;
+        while (current) {
+            path.unshift(current.name);
+            current = current.parent;
+        }
+        return path.length === 0 ? '/' : path.join('/');
+    }
+
+    rm(name) {
+        const parts = name.split('/');
+        const targetName = parts.pop();
+        const dir = parts.length > 0 || name.startsWith('/')
+            ? this.resolvePath(parts.join('/') || '/')
+            : this.currentDir;
+
+        if (!(dir instanceof Directory)) {
+            throw new Error('Target path is not a directory');
+        }
+        dir.removeChild(targetName);
+    }
+}
+
+// TESTS
+function runTests() {
+    const fs = new FileSystem();
+
+    console.log('Test 1: Crear directorios y archivos');
+    fs.mkdir('home');
+    fs.mkdir('home/docs');
+    fs.touch('home/docs/hello.txt');
+    console.assert(fs.ls().includes('home'), 'home should exist');
+    fs.cd('home/docs');
+    console.assert(fs.ls().includes('hello.txt'), 'hello.txt should exist');
+    console.log('Test 1 aprobado');
+
+    console.log('Test 2: pwd');
+    console.assert(fs.pwd() === '/home/docs', 'pwd should return /home/docs');
+    console.log('Test 2 aprobado');
+
+    console.log('Test 3: cd ..');
+    fs.cd('..');
+    console.assert(fs.pwd() === '/home', 'pwd should return /home');
+    console.log('Test 3 aprobado');
+
+    console.log('Test 4: Rutas absolutas');
+    fs.mkdir('/files');
+    fs.touch('/files/test.txt');
+    fs.cd('/files');
+    console.assert(fs.ls().includes('test.txt'), 'test.txt should exist in /files');
+    console.log('Test 4 aprobado');
+
+    console.log('Test 5: rm');
+    fs.rm('test.txt');
+    console.assert(!fs.ls().includes('test.txt'), 'test.txt should be removed');
+    console.log('Test 5 aprobado');
+
+    console.log('Test 6: Rutas compuestas (bonus)');
+    fs.mkdir('/home/docs/2025');
+    fs.touch('/home/docs/2025/note.txt');
+    fs.cd('/home/docs/2025');
+    console.assert(fs.ls().includes('note.txt'), 'note.txt should exist');
+    console.assert(fs.pwd() === '/home/docs/2025', 'pwd should return /home/docs/2025');
+    console.log('Test 6 aprobado');
+
+    console.log('Test 7: Errores');
+    try {
+        fs.touch('note.txt'); // Archivo ya existe
+        console.assert(false, 'Should throw error for duplicate file');
+    } catch (e) {
+        console.assert(e.message.includes('already exists'), 'Should detect duplicate');
+    }
+    try {
+        fs.cd('invalid');
+        console.assert(false, 'Should throw error for invalid path');
+    } catch (e) {
+        console.assert(e.message.includes('not found'), 'Should detect invalid path');
+    }
+    console.log('Test 7 aprobado');
+}
+
+// Ejecutar tests
+runTests();
